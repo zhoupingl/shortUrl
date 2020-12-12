@@ -24,7 +24,8 @@ type shortenReq struct {
 }
 
 type shortlinkResp struct {
-	Shortlink string `json:"short_link"`
+	Shortlink string `json:"short_id"`
+	ShortUrl  string `json:"short_url"`
 }
 
 func (a *App) Initapp(e *Env) {
@@ -36,14 +37,12 @@ func (a *App) Initapp(e *Env) {
 }
 
 func (a *App) initRoutes() {
-	/*a.Router.HandleFunc("/api/shorten",a.createShortlink).Methods("POST")
-	a.Router.HandleFunc("/api/info",a.getShortlinkInfo).Methods("GET")
-	a.Router.HandleFunc("/{shortlink:[a-zA-Z0-9]{1,11}}",a.redirect).Methods("GET")*/
-	m := alice.New(a.Middlewares.LoggingHandler, a.Middlewares.RecoverHandler)
+	api := alice.New(a.Middlewares.LoggingHandler,  a.Middlewares.PermissionsCheckHandler, a.Middlewares.RecoverHandler)
+	client := alice.New(a.Middlewares.LoggingHandler, a.Middlewares.RecoverHandler)
 
-	a.Router.Handle("/api/shorten", m.ThenFunc(a.createShortlink)).Methods("POST")
-	a.Router.Handle("/api/info", m.ThenFunc(a.getShortlinkInfo)).Methods("GET")
-	a.Router.Handle("/{shortlink:[a-zA-Z0-9]{1,11}}", m.ThenFunc(a.redirect)).Methods("GET")
+	a.Router.Handle("/api/shorten", api.ThenFunc(a.createShortlink)).Methods("POST")
+	a.Router.Handle("/api/info", api.ThenFunc(a.getShortlinkInfo)).Methods("GET")
+	a.Router.Handle("/{shortlink:[a-zA-Z0-9]{1,11}}", client.ThenFunc(a.redirect)).Methods("GET")
 }
 
 //创建短地址函数
@@ -69,7 +68,10 @@ func (a *App) createShortlink(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondWithError(w, err)
 	} else {
-		respondWithJSON(w, http.StatusCreated, shortlinkResp{Shortlink: s})
+		respondWithJSON(w, http.StatusCreated, shortlinkResp{
+			Shortlink: s,
+			ShortUrl:  a.Config.ShortHost + "/" + s,
+		})
 	}
 }
 
@@ -98,6 +100,7 @@ func (a *App) redirect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) Run(addr string) {
+	log.Printf("run http servie " + addr + "\n")
 	log.Fatal(http.ListenAndServe(addr, a.Router))
 }
 
@@ -115,7 +118,7 @@ func respondWithError(w http.ResponseWriter, err error) {
 //返回给客户端json信息
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	resp, _ := json.Marshal(payload)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code) //写入错误码
-	w.Header().Set("Context-Type", "application/json")
 	w.Write(resp) //写入序列化后的错误描述
 }

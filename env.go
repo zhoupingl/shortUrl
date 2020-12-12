@@ -7,7 +7,8 @@ import (
 )
 
 type Env struct {
-	S Storage
+	S         Storage
+	ShortHost string // 短链接访问地址
 }
 
 func getEnv() *Env {
@@ -23,11 +24,17 @@ func getEnv() *Env {
 	if dbs == "" {
 		dbs = "0"
 	}
+
+	shorthost := os.Getenv("APP_SHORT_HOST")
+
 	db, err := strconv.Atoi(dbs)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("connect to redis (addr: %s password: %s db: %d)", addr, passwd, db)
 	r := NewRedisCli(addr, passwd, db)
-	return &Env{S: r}
+	return &Env{
+		S:         r,
+		ShortHost: shorthost,
+	}
 }

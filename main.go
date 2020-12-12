@@ -1,7 +1,7 @@
 package main
 
-func main()  {
-	a:=App{}
+func main() {
+	a := App{}
 	a.Initapp(getEnv())
-	a.Run(":8000")
+	a.Run(":8187")
 }
