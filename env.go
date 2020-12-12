@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Env struct {
@@ -18,7 +19,7 @@ func getEnv() *Env {
 	}
 	passwd := os.Getenv("APP_REDIS_PASSWD")
 	if passwd == "" {
-		passwd ="CKVm4j6YL3t5 APP_REDIS_DB=5"
+		passwd = "CKVm4j6YL3t5 APP_REDIS_DB=5"
 	}
 	dbs := os.Getenv("APP_REDIS_DB")
 	if dbs == "" {
@@ -38,6 +39,6 @@ func getEnv() *Env {
 	r := NewRedisCli(addr, passwd, db)
 	return &Env{
 		S:         r,
-		ShortHost: shorthost,
+		ShortHost: strings.TrimRight(shorthost, "/"),
 	}
 }
