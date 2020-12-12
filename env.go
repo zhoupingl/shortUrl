@@ -14,11 +14,11 @@ type Env struct {
 func getEnv() *Env {
 	addr := os.Getenv("APP_REDIS_ADDR")
 	if addr == "" {
-		addr = "localhost:6379"
+		addr = "r-bp1ecyvm2s303ugmh9.redis.rds.aliyuncs.com:6379"
 	}
 	passwd := os.Getenv("APP_REDIS_PASSWD")
 	if passwd == "" {
-		//passwd =""
+		passwd ="CKVm4j6YL3t5 APP_REDIS_DB=5"
 	}
 	dbs := os.Getenv("APP_REDIS_DB")
 	if dbs == "" {
@@ -26,6 +26,9 @@ func getEnv() *Env {
 	}
 
 	shorthost := os.Getenv("APP_SHORT_HOST")
+	if shorthost == "" {
+		shorthost = "http://url.jzwp.cn"
+	}
 
 	db, err := strconv.Atoi(dbs)
 	if err != nil {
