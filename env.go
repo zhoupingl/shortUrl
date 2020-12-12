@@ -23,7 +23,7 @@ func getEnv() *Env {
 	}
 	dbs := os.Getenv("APP_REDIS_DB")
 	if dbs == "" {
-		dbs = "0"
+		dbs = "5"
 	}
 
 	shorthost := os.Getenv("APP_SHORT_HOST")
