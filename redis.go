@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-redis/redis/v7"
+	"golang.org/x/sync/singleflight"
 	"time"
 )
 
@@ -19,6 +20,7 @@ const (
 
 type RedisCli struct {
 	Cli *redis.Client
+	g   singleflight.Group
 }
 
 //短地址详细信息
@@ -46,54 +48,60 @@ func (r *RedisCli) Shorten(url string, exp int64) (string, error) {
 	urlHash := toSha1(url)
 	var id int64
 
-	d, err := r.Cli.Get(fmt.Sprintf(URLHashKey, urlHash)).Result()
-	if err == redis.Nil {
-		// URLHashKey不存在
-		// 1. 用自增量取得id
-		id1, err1 := r.Cli.Incr(URLIdKey).Result()
-		id = id1
-		if err1 != nil {
-			return "", err1
+	// 合并请求
+	val, err, _ := r.g.Do(urlHash, func() (interface{}, error) {
+
+		d, err := r.Cli.Get(fmt.Sprintf(URLHashKey, urlHash)).Result()
+		if err == redis.Nil {
+			// URLHashKey不存在
+			// 1. 用自增量取得id
+			id1, err1 := r.Cli.Incr(URLIdKey).Result()
+			id = id1
+			if err1 != nil {
+				return "", err1
+			}
+		} else if err != nil {
+			return "", err
+		} else {
+			if d != "{}" {
+				id = Decode(d)
+				//return d, nil
+			}
 		}
-	} else if err != nil {
-		return "", err
-	} else {
-		if d != "{}" {
-			id = Decode(d)
-			//return d, nil
+
+		// 把这个id转成62进制
+		encodeId := Encode(id)
+
+		// 2.存短地址和长地址的映射
+		err = r.Cli.Set(fmt.Sprintf(ShortlinkKey, encodeId), url, time.Minute*time.Duration(exp)).Err()
+		if err != nil {
+			return "", err
 		}
-	}
 
-	// 把这个id转成62进制
-	encodeId := Encode(id)
+		// 3. 存长地址的哈希值和短地址的映射
+		err = r.Cli.Set(fmt.Sprintf(URLHashKey, urlHash), encodeId, time.Minute*time.Duration(exp)).Err()
+		if err != nil {
+			return "", err
+		}
 
-	// 2.存短地址和长地址的映射
-	err = r.Cli.Set(fmt.Sprintf(ShortlinkKey, encodeId), url, time.Minute*time.Duration(exp)).Err()
-	if err != nil {
-		return "", err
-	}
+		detail, err := json.Marshal(&URLDetail{
+			URL:                 url,
+			CreatedAt:           time.Now().String(),
+			ExpirationInMinutes: time.Duration(exp),
+		})
+		if err != nil {
+			return "", err
+		}
 
-	// 3. 存长地址的哈希值和短地址的映射
-	err = r.Cli.Set(fmt.Sprintf(URLHashKey, urlHash), encodeId, time.Minute*time.Duration(exp)).Err()
-	if err != nil {
-		return "", err
-	}
-
-	detail, err := json.Marshal(&URLDetail{
-		URL:                 url,
-		CreatedAt:           time.Now().String(),
-		ExpirationInMinutes: time.Duration(exp),
+		// 4. 存短地址和详情的映射，创建时间过期时间等
+		err = r.Cli.Set(fmt.Sprintf(ShortLinkDetailKey, encodeId), detail, time.Minute*time.Duration(exp)).Err()
+		if err != nil {
+			return "", nil
+		}
+		return encodeId, nil
 	})
-	if err != nil {
-		return "", err
-	}
 
-	// 4. 存短地址和详情的映射，创建时间过期时间等
-	err = r.Cli.Set(fmt.Sprintf(ShortLinkDetailKey, encodeId), detail, time.Minute*time.Duration(exp)).Err()
-	if err != nil {
-		return "", nil
-	}
-	return encodeId, nil
+	return val.(string), err
 }
 
 //获取短地址详细信息
@@ -112,16 +120,25 @@ func (r *RedisCli) ShortLinkInfo(encodeId string) (interface{}, error) {
 
 //获取长地址
 func (r *RedisCli) UnShorten(encodeId string) (string, error) {
-	url, err := r.Cli.Get(fmt.Sprintf(ShortlinkKey, encodeId)).Result()
-	if err == redis.Nil {
-		return "", StatusError{
-			Code: 404,
-			Err:  errors.New("unknown short link"),
+
+	// 短链接key
+	key := fmt.Sprintf(ShortlinkKey, encodeId)
+
+	// 合并请求
+	val, err, _ := r.g.Do(key, func() (interface{}, error) {
+		url, err := r.Cli.Get(key).Result()
+		if err == redis.Nil {
+			return "", StatusError{
+				Code: 404,
+				Err:  errors.New("unknown short link"),
+			}
+		} else if err != nil {
+			return "", err
 		}
-	} else if err != nil {
-		return "", err
-	}
-	return url, nil
+		return url, nil
+	})
+
+	return val.(string), err
 }
 
 func toSha1(data string) string {
