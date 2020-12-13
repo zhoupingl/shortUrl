@@ -120,5 +120,5 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	resp, _ := json.Marshal(payload)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code) //写入错误码
-	w.Write(resp) //写入序列化后的错误描述
+	w.Write(resp)       //写入序列化后的错误描述
 }
